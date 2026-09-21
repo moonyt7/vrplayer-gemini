@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">VR Player</string>
+    <string name="split_screen">双目分屏</string>
+    <string name="mono_screen">单屏模式</string>
+    <string name="lock_view">视角锁定</string>
+    <string name="unlock_view">视角跟随</string>
+    <string name="recenter">视角复位</string>
+    <string name="ipd_label">瞳距(IPD): %d mm</string>
+    <string name="source">片源选择</string>
+    <string name="format">VR格式</string>
+    <string name="gyro_on">陀螺仪: 开启</string>
+    <string name="gyro_off">陀螺仪: 关闭</string>
+    <string name="keep_awake_on">常亮: 开启</string>
+    <string name="keep_awake_off">常亮: 关闭</string>
+    <string name="ipd_panel">瞳距调节</string>
+    <string name="play">播放</string>
+    <string name="pause">暂停</string>
+</resources>

@@ -1,0 +1,13 @@
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="cyan_accent">#06B6D4</color>
+    <color name="cyan_dark">#0E7490</color>
+    <color name="dark_bg">#0A0A0F</color>
+    <color name="panel_bg">#D914141E</color>
+    <color name="panel_bg_secondary">#D91F202E</color>
+    <color name="panel_border">#33384D</color>
+    <color name="text_muted">#94A3B8</color>
+    <color name="red_accent">#EF4444</color>
+    <color name="green_accent">#10B981</color>
+</resources>

@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.VRPlayer" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/dark_bg</item>
+        <item name="android:statusBarColor">@color/black</item>
+        <item name="android:navigationBarColor">@color/black</item>
+    </style>
+</resources>

@@ -1,0 +1,514 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/black"
+    android:keepScreenOn="true">
+
+    <!-- 1. OpenGL 360/180/3D 渲染视图 -->
+    <com.example.vrplayer.VRGLSurfaceView
+        android:id="@+id/vrSurfaceView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- 2. VR 盒子中心对准辅助线与左右眼瞄准准星 (放入VR盒子时校准居中用) -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/crosshairOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone">
+
+        <!-- 中间分割线 (手机VR盒子中心中缝对齐) -->
+        <View
+            android:id="@+id/centerDividerLine"
+            android:layout_width="1.5dp"
+            android:layout_height="match_parent"
+            android:background="#8006B6D4"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- 左眼中心十字瞄准点 -->
+        <TextView
+            android:id="@+id/tvLeftCrosshair"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="+"
+            android:textColor="#8006B6D4"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/centerDividerLine"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent" />
+
+        <!-- 右眼中心十字瞄准点 -->
+        <TextView
+            android:id="@+id/tvRightCrosshair"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="+"
+            android:textColor="#8006B6D4"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toEndOf="@+id/centerDividerLine"
+            app:layout_constraintTop_toTopOf="parent" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- 3. 屏幕中心手势 HUD 浮层 (滑动调亮度/音量/快进/缩放FOV时瞬时出现) -->
+    <LinearLayout
+        android:id="@+id/gestureHud"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_hud"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingTop="10dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="10dp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/tvGestureHud"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🔆 亮度: 80%"
+            android:textColor="@color/white"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 4. 交互操作控制层 (单击屏幕可切换显示/隐藏，4秒无操作自动隐藏) -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/controlsOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <!-- 顶部导航栏 (横向滚动条) -->
+        <HorizontalScrollView
+            android:id="@+id/topBarScroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#D00A0A12"
+            android:paddingStart="12dp"
+            android:paddingTop="8dp"
+            android:paddingEnd="12dp"
+            android:paddingBottom="8dp"
+            android:scrollbars="none"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <!-- 片源选择按钮 -->
+                <Button
+                    android:id="@+id/btnSource"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:text="📁 片源选择"
+                    android:textColor="@color/white"
+                    android:textSize="12sp" />
+
+                <!-- VR 格式切换 -->
+                <Button
+                    android:id="@+id/btnVRFormat"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:text="🌐 360° 全景"
+                    android:textColor="@color/cyan_accent"
+                    android:textSize="12sp" />
+
+                <!-- 单屏 / 双目分屏 切换 -->
+                <Button
+                    android:id="@+id/btnToggleSplit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:text="🥽 双目分屏"
+                    android:textColor="@color/white"
+                    android:textSize="12sp" />
+
+                <!-- 陀螺仪体感开关 -->
+                <Button
+                    android:id="@+id/btnToggleGyro"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:text="🧭 陀螺仪: 开启"
+                    android:textColor="@color/green_accent"
+                    android:textSize="12sp" />
+
+                <!-- 视角锁定开关 -->
+                <Button
+                    android:id="@+id/btnLockView"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:text="🔓 视角跟随"
+                    android:textColor="@color/white"
+                    android:textSize="12sp" />
+
+                <!-- 视角正向归位 -->
+                <Button
+                    android:id="@+id/btnRecenter"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:text="🎯 归中复位"
+                    android:textColor="@color/cyan_accent"
+                    android:textSize="12sp" />
+
+                <!-- 瞳距 (IPD) 调节面板呼出 -->
+                <Button
+                    android:id="@+id/btnToggleIpd"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:text="👁 瞳距调校"
+                    android:textColor="@color/white"
+                    android:textSize="12sp" />
+
+                <!-- 屏幕常亮开关 -->
+                <Button
+                    android:id="@+id/btnKeepAwake"
+                    android:layout_width="wrap_content"
+                    android:layout_height="38dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:text="💡 屏幕常亮: 开"
+                    android:textColor="@color/white"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </HorizontalScrollView>
+
+        <!-- 5. 手机 VR 盒子瞳距 (IPD) 精准微调面板 -->
+        <LinearLayout
+            android:id="@+id/ipdCardLayout"
+            android:layout_width="380dp"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/bg_panel"
+            android:elevation="6dp"
+            android:orientation="vertical"
+            android:padding="14dp"
+            android:visibility="gone"
+            app:layout_constraintBottom_toTopOf="@+id/bottomBarLayout"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent">
+
+            <!-- 标题栏与关闭按钮 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="VR 盒子瞳距 (IPD) 微调"
+                    android:textColor="@color/white"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvIpdValue"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="64 mm"
+                    android:textColor="@color/cyan_accent"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <Button
+                    android:id="@+id/btnCloseIpd"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:text="✕"
+                    android:textColor="@color/text_muted"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <!-- 常用瞳距预设与步进调节 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/btnIpdMinus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:text="-1mm"
+                    android:textColor="@color/white"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/btnIpdPreset58"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:text="58mm 窄"
+                    android:textColor="@color/text_muted"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/btnIpdPreset64"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:text="64mm 标准"
+                    android:textColor="@color/cyan_accent"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/btnIpdPreset70"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:text="70mm 宽"
+                    android:textColor="@color/text_muted"
+                    android:textSize="11sp" />
+
+                <Button
+                    android:id="@+id/btnIpdPlus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:text="+1mm"
+                    android:textColor="@color/white"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <!-- 像素级滑动条 -->
+            <SeekBar
+                android:id="@+id/sbIpd"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:max="60"
+                android:progress="30" />
+
+            <!-- 对齐准星开关 -->
+            <CheckBox
+                android:id="@+id/cbCrosshair"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:text="显示中心十字准星与中缝线 (方便放入VR盒子居中对准)"
+                android:textColor="@color/text_muted"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <!-- 6. 底部播放进度与媒体控制栏 -->
+        <LinearLayout
+            android:id="@+id/bottomBarLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#D00A0A12"
+            android:orientation="vertical"
+            android:paddingStart="14dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="14dp"
+            android:paddingBottom="10dp"
+            app:layout_constraintBottom_toBottomOf="parent">
+
+            <!-- 进度条与时间显示行 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/tvTimeCurrent"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="00:00"
+                    android:textColor="@color/white"
+                    android:textSize="12sp" />
+
+                <SeekBar
+                    android:id="@+id/sbTimeline"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:layout_marginEnd="8dp"
+                    android:layout_weight="1"
+                    android:max="1000" />
+
+                <TextView
+                    android:id="@+id/tvTimeTotal"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="00:00"
+                    android:textColor="@color/text_muted"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- 播放控制按键行 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <!-- 播放/暂停大按键 -->
+                <Button
+                    android:id="@+id/btnPlayPause"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="14dp"
+                    android:paddingEnd="14dp"
+                    android:text="⏸ 暂停"
+                    android:textColor="@color/white"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <!-- 快退 10 秒 -->
+                <Button
+                    android:id="@+id/btnRewind"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="⏪ -10s"
+                    android:textColor="@color/white"
+                    android:textSize="12sp" />
+
+                <!-- 快进 10 秒 -->
+                <Button
+                    android:id="@+id/btnFastForward"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="⏩ +10s"
+                    android:textColor="@color/white"
+                    android:textSize="12sp" />
+
+                <!-- 播放倍速 -->
+                <Button
+                    android:id="@+id/btnSpeed"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="1.0x"
+                    android:textColor="@color/white"
+                    android:textSize="12sp" />
+
+                <!-- 静音/音量开关 -->
+                <Button
+                    android:id="@+id/btnMute"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:layout_marginStart="8dp"
+                    android:background="@drawable/bg_button"
+                    android:minWidth="0dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
+                    android:text="🔊 100%"
+                    android:textColor="@color/white"
+                    android:textSize="12sp" />
+
+                <!-- 当前视频标题显示 -->
+                <TextView
+                    android:id="@+id/tvVideoTitle"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp"
+                    android:layout_weight="1"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:text="示例 360 VR 视频"
+                    android:textColor="@color/text_muted"
+                    android:textSize="11sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
