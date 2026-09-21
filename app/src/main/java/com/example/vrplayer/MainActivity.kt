@@ -127,6 +127,38 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         lanShareManager.startBackgroundDiscovery()
 
         resetAutoHideTimer()
+
+        // 处理从外部文件管理器（如“用其他应用打开”或“分享”）启动时传入的视频
+        handleIncomingIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIncomingIntent(intent)
+    }
+
+    private fun handleIncomingIntent(intent: Intent?) {
+        if (intent == null) return
+        val uri: Uri? = when (intent.action) {
+            Intent.ACTION_VIEW -> intent.data
+            Intent.ACTION_SEND -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+                }
+            }
+            else -> intent.data
+        }
+
+        if (uri != null) {
+            // 稍作微小延迟以确保 GL Surface 和解码管线已完成初始化并就绪
+            mainHandler.postDelayed({
+                handleSelectedVideo(uri)
+            }, 150)
+        }
     }
 
     private fun initPlayer() {

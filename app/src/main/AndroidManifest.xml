@@ -22,11 +22,72 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
             android:screenOrientation="sensorLandscape">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- 1. 响应系统文件管理器“用其他应用打开”各种视频文件 (content:// 与 file:// 协议) -->
+            <intent-filter android:label="VR Player">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+
+            <!-- 2. 兼容 Matroska MKV 与部分特定 MIME 类型的视频文件 -->
+            <intent-filter android:label="VR Player">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/x-matroska" />
+                <data android:mimeType="application/mp4" />
+                <data android:mimeType="application/mkv" />
+                <data android:mimeType="application/ogg" />
+            </intent-filter>
+
+            <!-- 3. 针对不带 MIME 或使用通用流格式的文件管理器，按后缀名精确过滤匹配 -->
+            <intent-filter android:label="VR Player">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:host="*" />
+                <data android:pathPattern=".*\\.mp4" />
+                <data android:pathPattern=".*\\.mkv" />
+                <data android:pathPattern=".*\\.mov" />
+                <data android:pathPattern=".*\\.avi" />
+                <data android:pathPattern=".*\\.wmv" />
+                <data android:pathPattern=".*\\.flv" />
+                <data android:pathPattern=".*\\.webm" />
+                <data android:pathPattern=".*\\.ts" />
+                <data android:pathPattern=".*\\.m4v" />
+                <data android:pathPattern=".*\\.3gp" />
+            </intent-filter>
+
+            <!-- 4. 响应第三方浏览器或外部应用发送的网络视频直链 (http:// 和 https://) -->
+            <intent-filter android:label="VR Player">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:mimeType="video/*" />
+            </intent-filter>
+
+            <!-- 5. 响应其他应用“分享”视频到本播放器 -->
+            <intent-filter android:label="VR Player">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
             </intent-filter>
         </activity>
     </application>
