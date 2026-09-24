@@ -2,6 +2,7 @@ package com.example.vrplayer
 
 import android.Manifest
 import android.app.AlertDialog
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -16,17 +17,23 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.OpenableColumns
+import android.text.Editable
 import android.text.InputType
+import android.text.TextWatcher
+import android.text.method.ScrollingMovementMethod
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.Surface
 import android.view.View
 import android.view.WindowManager
+import android.view.inputmethod.InputMethodManager
+import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioButton
 import android.widget.RadioGroup
+import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -278,10 +285,27 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 }
             } else if (uri.scheme == "file") {
                 uri.path?.let { File(it).name }
+            } else if (uri.scheme == "http" || uri.scheme == "https" || uri.scheme == "rtsp") {
+                getCleanNetworkTitle(uri.toString())
             } else null
         } catch (e: Throwable) {
             null
         } ?: uri.lastPathSegment ?: "本地视频"
+    }
+
+    private fun getCleanNetworkTitle(url: String): String {
+        return try {
+            val uri = Uri.parse(url)
+            val last = uri.lastPathSegment?.trim()
+            if (!last.isNullOrEmpty() && (last.contains(".") || last.length < 35)) {
+                "网络视频: $last"
+            } else {
+                val host = uri.host ?: ""
+                if (host.isNotEmpty()) "网络视频: $host" else "网络视频: ${url.take(30)}"
+            }
+        } catch (e: Exception) {
+            "网络视频: ${url.take(30)}"
+        }
     }
 
     private fun checkStoragePermissionAndPick() {
@@ -620,26 +644,97 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun showNetworkUrlDialog() {
-        val input = EditText(this).apply {
-            hint = "https://example.com/video.mp4 或 rtsp://..."
-            setTextColor(getColor(R.color.white))
-            setPadding(40, 30, 40, 30)
+        val dialogView = layoutInflater.inflate(R.layout.dialog_network_url, null)
+        val etUrl = dialogView.findViewById<EditText>(R.id.etNetworkUrl)
+        val btnPaste = dialogView.findViewById<Button>(R.id.btnPasteUrl)
+        val btnClear = dialogView.findViewById<Button>(R.id.btnClearUrl)
+        val tvHint = dialogView.findViewById<TextView>(R.id.tvUrlLengthHint)
+        val btnCancel = dialogView.findViewById<Button>(R.id.btnCancelUrl)
+        val btnPlay = dialogView.findViewById<Button>(R.id.btnPlayUrl)
+
+        // 限制输入框最大高度并开启内置纵向滚动，彻底杜绝超长链接撑爆弹窗遮挡底部按钮
+        etUrl.movementMethod = ScrollingMovementMethod.getInstance()
+
+        // 自动识别系统剪贴板中的有效视频串流链接
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString()?.trim() ?: ""
+
+        val isClipUrl = clipText.startsWith("http://", ignoreCase = true) ||
+                clipText.startsWith("https://", ignoreCase = true) ||
+                clipText.startsWith("rtsp://", ignoreCase = true) ||
+                clipText.startsWith("rtmp://", ignoreCase = true)
+
+        if (isClipUrl) {
+            etUrl.setText(clipText)
+            etUrl.setSelection(clipText.length)
+            tvHint.text = "已识别剪贴板 (${clipText.length}字)"
         }
 
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
-            .setTitle("输入网络串流地址")
-            .setMessage("支持标准 HTTP / HTTPS / RTSP / HLS 视频网络直链")
-            .setView(input)
-            .setPositiveButton("立即播放") { _, _ ->
-                val url = input.text.toString().trim()
-                if (url.isNotEmpty()) {
-                    playUri(Uri.parse(url), "网络视频: $url")
-                    autoDetectAndApplyVRFormat(url)
-                    showHud("正在缓冲硬解网络视频")
+        btnPaste.setOnClickListener {
+            val text = clipboard?.primaryClip?.getItemAt(0)?.text?.toString()?.trim() ?: ""
+            if (text.isNotEmpty()) {
+                etUrl.setText(text)
+                etUrl.setSelection(text.length)
+                tvHint.text = "已粘贴 (${text.length}字)"
+            } else {
+                Toast.makeText(this, "剪贴板为空", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        btnClear.setOnClickListener {
+            etUrl.setText("")
+            tvHint.text = ""
+        }
+
+        etUrl.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                val len = s?.length ?: 0
+                if (len > 0) {
+                    tvHint.text = "$len 字"
+                } else {
+                    tvHint.text = ""
                 }
             }
-            .setNegativeButton("取消", null)
-            .show()
+            override fun afterTextChanged(s: Editable?) {}
+        })
+
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setView(dialogView)
+            .create()
+
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+
+        btnCancel.setOnClickListener {
+            dialog.dismiss()
+        }
+
+        btnPlay.setOnClickListener {
+            val url = etUrl.text.toString().trim()
+            if (url.isNotEmpty()) {
+                val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                imm?.hideSoftInputFromWindow(etUrl.windowToken, 0)
+                dialog.dismiss()
+
+                val cleanTitle = getCleanNetworkTitle(url)
+                playUri(Uri.parse(url), cleanTitle)
+                autoDetectAndApplyVRFormat(url)
+                showHud("正在缓冲硬解网络视频")
+            } else {
+                Toast.makeText(this, "请输入有效的网络视频播放地址", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        dialog.show()
+
+        // 横屏优化：限制最大宽度并居中，确保操作按键与输入框视觉比例均衡
+        dialog.window?.let { window ->
+            val displayMetrics = resources.displayMetrics
+            val maxW = (540 * displayMetrics.density).toInt()
+            val targetW = (displayMetrics.widthPixels * 0.85f).toInt().coerceAtMost(maxW)
+            window.setLayout(targetW, WindowManager.LayoutParams.WRAP_CONTENT)
+        }
     }
 
     private fun showLanDevicesDialog() {
@@ -690,7 +785,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private fun showManualLanDeviceDialog() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(50, 30, 50, 20)
+            setPadding(40, 20, 40, 10)
         }
 
         val etName = EditText(this).apply {
@@ -712,9 +807,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         layout.addView(etHost)
         layout.addView(etPort)
 
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        val scrollView = ScrollView(this).apply {
+            addView(layout)
+        }
+
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("手动指定局域网设备")
-            .setView(layout)
+            .setView(scrollView)
             .setPositiveButton("下一步：连接设置") { _, _ ->
                 val host = etHost.text.toString().trim()
                 if (host.isNotEmpty()) {
@@ -735,19 +834,22 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 }
             }
             .setNegativeButton("取消", null)
-            .show()
+            .create()
+
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        dialog.show()
     }
 
     private fun showLanAuthDialog(device: LanDevice) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(50, 30, 50, 20)
+            setPadding(40, 20, 40, 10)
         }
 
         val tvInfo = TextView(this).apply {
             text = "目标设备: ${device.name}\n网络地址: ${device.host}:${device.port} (${device.protocol})"
             setTextColor(getColor(R.color.white))
-            setPadding(0, 0, 0, 20)
+            setPadding(0, 0, 0, 16)
         }
 
         val radioGroup = RadioGroup(this).apply {
@@ -796,9 +898,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         layout.addView(etPass)
         layout.addView(etShare)
 
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+        val scrollView = ScrollView(this).apply {
+            addView(layout)
+        }
+
+        val dialog = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
             .setTitle("连接局域网共享")
-            .setView(layout)
+            .setView(scrollView)
             .setPositiveButton("连接并列出文件") { _, _ ->
                 val isAnon = rbAnonymous.isChecked
                 val user = etUser.text.toString().trim()
@@ -830,7 +936,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 }
             }
             .setNegativeButton("取消", null)
-            .show()
+            .create()
+
+        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        dialog.show()
     }
 
     private fun showLanFileExplorer(

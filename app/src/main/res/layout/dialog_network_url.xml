@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_panel"
+    android:orientation="vertical"
+    android:paddingStart="18dp"
+    android:paddingTop="14dp"
+    android:paddingEnd="18dp"
+    android:paddingBottom="14dp">
+
+    <!-- 顶部标题与格式说明 -->
+    <TextView
+        android:id="@+id/tvDialogTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="🌐 输入网络视频串流地址"
+        android:textColor="@color/white"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvDialogSubtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="3dp"
+        android:text="支持 HTTP / HTTPS / RTSP / HLS (.m3u8) / MP4 视频直链"
+        android:textColor="@color/text_muted"
+        android:textSize="11sp" />
+
+    <!-- 快捷操作栏 (剪贴板粘贴与一键清空) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnPasteUrl"
+            android:layout_width="wrap_content"
+            android:layout_height="30dp"
+            android:background="@drawable/bg_button"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="📋 粘贴剪贴板"
+            android:textColor="@color/cyan_accent"
+            android:textSize="11sp" />
+
+        <Button
+            android:id="@+id/btnClearUrl"
+            android:layout_width="wrap_content"
+            android:layout_height="30dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_button"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="✕ 清空"
+            android:textColor="@color/text_muted"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/tvUrlLengthHint"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:gravity="end"
+            android:maxLines="1"
+            android:textColor="@color/text_muted"
+            android:textSize="10sp" />
+    </LinearLayout>
+
+    <!-- 严格限制高度的输入框容器 (解决链接过长时向下无限伸展并遮挡下方按钮的问题) -->
+    <EditText
+        android:id="@+id/etNetworkUrl"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/bg_button"
+        android:gravity="top|start"
+        android:hint="在此粘贴或输入网络视频播放地址 (如 https://...)"
+        android:maxHeight="75dp"
+        android:maxLines="3"
+        android:minHeight="48dp"
+        android:paddingStart="12dp"
+        android:paddingTop="8dp"
+        android:paddingEnd="12dp"
+        android:paddingBottom="8dp"
+        android:scrollbars="vertical"
+        android:textColor="@color/white"
+        android:textColorHint="#64748B"
+        android:textSize="12sp" />
+
+    <!-- 底部常驻固定的操作按钮栏 (永远不被长链接或键盘顶出屏幕) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="end|center_vertical"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnCancelUrl"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:background="@drawable/bg_button"
+            android:minWidth="80dp"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:text="取消"
+            android:textColor="@color/white"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnPlayUrl"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginStart="12dp"
+            android:background="@drawable/bg_button"
+            android:minWidth="100dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:text="▶ 立即播放"
+            android:textColor="@color/cyan_accent"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+</LinearLayout>
