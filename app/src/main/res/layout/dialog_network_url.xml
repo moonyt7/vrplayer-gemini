@@ -24,7 +24,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="3dp"
-        android:text="支持 HTTP / HTTPS / RTSP / HLS (.m3u8) / MP4 视频直链"
+        android:text="支持猫抓复制的 m3u8 / mp4 / curl / ffmpeg，可连同 Referer、Cookie 一起粘贴"
         android:textColor="@color/text_muted"
         android:textSize="11sp" />
 
@@ -84,9 +84,9 @@
         android:layout_marginTop="8dp"
         android:background="@drawable/bg_button"
         android:gravity="top|start"
-        android:hint="在此粘贴或输入网络视频播放地址 (如 https://...)"
-        android:maxHeight="75dp"
-        android:maxLines="3"
+        android:hint="粘贴猫抓嗅探链接，或整段含 Referer/Cookie 的文本"
+        android:maxHeight="88dp"
+        android:maxLines="5"
         android:minHeight="48dp"
         android:paddingStart="12dp"
         android:paddingTop="8dp"

@@ -29,6 +29,7 @@ import android.view.View
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.RadioButton
@@ -44,24 +45,40 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.HttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.source.UnrecognizedInputFormatException
 import com.example.vrplayer.databinding.ActivityMainBinding
 import java.io.File
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import kotlin.math.abs
 
+@OptIn(UnstableApi::class)
 class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var player: ExoPlayer
+    private lateinit var httpDataSourceFactory: DefaultHttpDataSource.Factory
     private lateinit var audioManager: AudioManager
     private lateinit var sensorManager: SensorManager
     private var rotationSensor: Sensor? = null
     private lateinit var lanShareManager: LanShareManager
+    private lateinit var lanCredentialStore: LanCredentialStore
+    private var lastSniffedInput: String? = null
+    private var hlsRetryUsed = false
 
     private lateinit var gestureDetector: GestureDetector
     private lateinit var scaleDetector: ScaleGestureDetector
@@ -131,6 +148,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
         // 静默启动局域网后台探测，不弹窗、不产生 HUD 骚扰
         lanShareManager = LanShareManager(this)
+        lanCredentialStore = LanCredentialStore(this)
         lanShareManager.startBackgroundDiscovery()
 
         resetAutoHideTimer()
@@ -175,7 +193,26 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setEnableDecoderFallback(true)
         }
 
-        player = ExoPlayer.Builder(this, renderersFactory).build()
+        // 配置网络流媒体数据源：伪装浏览器 User-Agent，开启跨协议重定向，兼容猫抓 HLS/DASH
+        httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(NetworkStreamParser.DEFAULT_UA)
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(20000)
+            .setReadTimeoutMs(30000)
+            .setKeepPostFor302Redirects(true)
+
+        val dataSourceFactory = DefaultDataSource.Factory(this, httpDataSourceFactory)
+        val mediaSourceFactory = DefaultMediaSourceFactory(this)
+            .setDataSourceFactory(dataSourceFactory)
+
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(15_000, 50_000, 2_500, 5_000)
+            .build()
+
+        player = ExoPlayer.Builder(this, renderersFactory)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .setLoadControl(loadControl)
+            .build()
 
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -217,10 +254,81 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                val errorMsg = error.message ?: "解码或网络错误"
+                var cause: Throwable? = error.cause
+                var httpStatusCode: Int? = null
+                var isNetworkError = false
+                var isHtmlOrFormatError = false
+                var isDnsOrTimeout = false
+                var errorDetail = ""
+
+                while (cause != null) {
+                    when (cause) {
+                        is HttpDataSource.InvalidResponseCodeException -> {
+                            httpStatusCode = cause.responseCode
+                            break
+                        }
+                        is UnrecognizedInputFormatException -> {
+                            isHtmlOrFormatError = true
+                            break
+                        }
+                        is UnknownHostException -> {
+                            isDnsOrTimeout = true
+                            errorDetail = "无法解析域名 (请检查网络或是否需要科学上网/代理)"
+                            break
+                        }
+                        is SocketTimeoutException -> {
+                            isDnsOrTimeout = true
+                            errorDetail = "网络连接超时 (目标服务器响应过慢或连接被阻断)"
+                            break
+                        }
+                        is ConnectException -> {
+                            isDnsOrTimeout = true
+                            errorDetail = "网络连接被拒绝 (无法连接至目标服务器)"
+                            break
+                        }
+                        is HttpDataSource.HttpDataSourceException -> {
+                            isNetworkError = true
+                        }
+                    }
+                    cause = cause.cause
+                }
+
+                val shouldRetryHls = !hlsRetryUsed && lastSniffedInput != null &&
+                    !lastSniffedInput.orEmpty().contains("127.0.0.1") && (
+                    isHtmlOrFormatError ||
+                        error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED
+                    )
+                if (shouldRetryHls) {
+                    hlsRetryUsed = true
+                    runOnUiThread {
+                        showHud("直链探测失败，正在按 HLS/m3u8 重试...", 2000L)
+                        playNetworkStream(lastSniffedInput!!, forceHls = true)
+                    }
+                    return
+                }
+
+                val tip = when {
+                    httpStatusCode == 403 -> "HTTP 403: 防盗链拦截，请把猫抓里的 Referer / Cookie 一并粘贴后再播"
+                    httpStatusCode == 404 -> "HTTP 404: 链接不存在或该临时下载链接已失效"
+                    httpStatusCode == 401 -> "HTTP 401: 未授权，该资源需要登录"
+                    httpStatusCode == 410 -> "HTTP 410: 资源已过期下架"
+                    httpStatusCode != null && httpStatusCode >= 500 -> "HTTP $httpStatusCode: 目标服务器异常"
+                    isDnsOrTimeout -> errorDetail
+                    isHtmlOrFormatError -> "无法识别视频格式: 请粘贴猫抓复制的 m3u8/mp4 直链，或把 Referer/Cookie 一并粘贴"
+                    error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED ||
+                        error.errorCode == PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED ->
+                        "清单解析失败: 链接可能已过期，或缺少 Referer/Cookie，请重新从猫抓复制"
+                    error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED -> "网络连接失败，请检查网络设置或代理"
+                    error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "网络连接超时"
+                    error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED -> "设备硬解初始化失败: 不支持此编码规格"
+                    isNetworkError -> "网络流媒体传输失败，请检查直链有效性，或把页面 Referer 一起粘贴"
+                    else -> error.localizedMessage ?: "解码或网络错误"
+                }
+
                 runOnUiThread {
-                    Toast.makeText(this@MainActivity, "视频无法解码: $errorMsg", Toast.LENGTH_LONG).show()
-                    showHud("⚠ 播放失败，请尝试其他格式")
+                    Toast.makeText(this@MainActivity, "播放失败: $tip", Toast.LENGTH_LONG).show()
+                    showHud("⚠ $tip", 4000L)
                 }
             }
         })
@@ -234,17 +342,93 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun playUri(uri: Uri, title: String) {
+        val scheme = uri.scheme?.lowercase()
+        val host = uri.host
+        val isLocalProxy = host == "127.0.0.1" || host == "localhost"
+        if ((scheme == "http" || scheme == "https") && !isLocalProxy) {
+            playNetworkStream(uri.toString(), title)
+            return
+        }
+        if (scheme == "rtsp" || scheme == "rtmp") {
+            playNetworkStream(uri.toString(), title)
+            return
+        }
         try {
-            // 关键：切换视频前先停止旧视频硬解管线，防止 MediaCodec 状态竞争导致 Native 闪退
             player.stop()
-            val mediaItem = MediaItem.fromUri(uri)
-            player.setMediaItem(mediaItem)
+            player.clearMediaItems()
+            lastSniffedInput = null
+            hlsRetryUsed = false
+            httpDataSourceFactory.setDefaultRequestProperties(emptyMap())
+            player.setMediaItem(MediaItem.fromUri(uri))
             player.prepare()
             player.play()
             binding.tvVideoTitle.text = title
         } catch (e: Throwable) {
             Toast.makeText(this, "播放器加载异常: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun playNetworkStream(rawInput: String, title: String? = null, forceHls: Boolean = false) {
+        try {
+            if (rawInput.contains("blob:", ignoreCase = true) &&
+                !rawInput.contains("http://", ignoreCase = true) &&
+                !rawInput.contains("https://", ignoreCase = true)
+            ) {
+                Toast.makeText(this, "blob 链接只能在浏览器页内播放，请在猫抓中复制 m3u8 或媒体直链", Toast.LENGTH_LONG).show()
+                return
+            }
+
+            val parsed = NetworkStreamParser.parse(rawInput)
+            if (parsed == null) {
+                Toast.makeText(this, "未识别到有效的视频链接，请粘贴猫抓复制的 m3u8 / mp4 直链", Toast.LENGTH_LONG).show()
+                return
+            }
+
+            if (!forceHls) {
+                lastSniffedInput = rawInput
+                hlsRetryUsed = false
+            }
+
+            player.stop()
+            player.clearMediaItems()
+
+            val playUri = resolvePlayUri(parsed)
+            val scheme = playUri.scheme?.lowercase()
+            if (scheme == "http" || scheme == "https") {
+                httpDataSourceFactory.setDefaultRequestProperties(parsed.headers)
+            } else {
+                httpDataSourceFactory.setDefaultRequestProperties(emptyMap())
+            }
+
+            val mediaItemBuilder = MediaItem.Builder().setUri(playUri)
+            val mimeType = if (forceHls) {
+                MimeTypes.APPLICATION_M3U8
+            } else {
+                parsed.mimeType
+            }
+            mimeType?.let { mime ->
+                mediaItemBuilder.setMimeType(mime)
+            }
+            player.setMediaItem(mediaItemBuilder.build())
+            player.prepare()
+            player.play()
+
+            val displayTitle = title ?: getCleanNetworkTitle(parsed.url)
+            binding.tvVideoTitle.text = displayTitle
+            autoDetectAndApplyVRFormat(parsed.url)
+        } catch (e: Throwable) {
+            Toast.makeText(this, "播放器加载异常: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun resolvePlayUri(parsed: ParsedNetworkStream): Uri {
+        val playlist = parsed.playlistBody
+        if (!playlist.isNullOrBlank()) {
+            val cacheFile = File(cacheDir, "sniffed_playlist.m3u8")
+            cacheFile.writeText(playlist)
+            return Uri.fromFile(cacheFile)
+        }
+        return Uri.parse(parsed.url)
     }
 
     private fun handleSelectedVideo(uri: Uri?) {
@@ -659,12 +843,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         val clipText = clipboard?.primaryClip?.getItemAt(0)?.text?.toString()?.trim() ?: ""
 
-        val isClipUrl = clipText.startsWith("http://", ignoreCase = true) ||
-                clipText.startsWith("https://", ignoreCase = true) ||
+        val isClipStream = clipText.contains("http://", ignoreCase = true) ||
+                clipText.contains("https://", ignoreCase = true) ||
                 clipText.startsWith("rtsp://", ignoreCase = true) ||
-                clipText.startsWith("rtmp://", ignoreCase = true)
+                clipText.startsWith("rtmp://", ignoreCase = true) ||
+                clipText.startsWith("#EXTM3U", ignoreCase = true) ||
+                clipText.contains("curl ", ignoreCase = true) ||
+                clipText.contains("ffmpeg ", ignoreCase = true)
 
-        if (isClipUrl) {
+        if (isClipStream) {
             etUrl.setText(clipText)
             etUrl.setSelection(clipText.length)
             tvHint.text = "已识别剪贴板 (${clipText.length}字)"
@@ -711,18 +898,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
 
         btnPlay.setOnClickListener {
-            val url = etUrl.text.toString().trim()
-            if (url.isNotEmpty()) {
+            val raw = etUrl.text.toString().trim()
+            if (raw.isNotEmpty()) {
                 val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
                 imm?.hideSoftInputFromWindow(etUrl.windowToken, 0)
                 dialog.dismiss()
-
-                val cleanTitle = getCleanNetworkTitle(url)
-                playUri(Uri.parse(url), cleanTitle)
-                autoDetectAndApplyVRFormat(url)
+                playNetworkStream(raw)
                 showHud("正在缓冲硬解网络视频")
             } else {
-                Toast.makeText(this, "请输入有效的网络视频播放地址", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "请粘贴猫抓复制的视频直链", Toast.LENGTH_SHORT).show()
             }
         }
 
@@ -841,6 +1025,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun showLanAuthDialog(device: LanDevice) {
+        val savedAuth = lanCredentialStore.load(device.host)
+
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(40, 20, 40, 10)
@@ -859,7 +1045,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             id = View.generateViewId()
             text = "匿名 / 来宾连接 (Guest 免密)"
             setTextColor(getColor(R.color.white))
-            isChecked = true
         }
         val rbAuth = RadioButton(this).apply {
             id = View.generateViewId()
@@ -885,6 +1070,28 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setTextColor(getColor(R.color.white))
             setPadding(0, 16, 0, 10)
         }
+        val cbRemember = CheckBox(this).apply {
+            text = "记住用户名与密码"
+            setTextColor(getColor(R.color.white))
+            isChecked = savedAuth != null
+        }
+
+        if (savedAuth != null) {
+            if (savedAuth.isAnonymous) {
+                rbAnonymous.isChecked = true
+            } else {
+                rbAuth.isChecked = true
+                etUser.setText(savedAuth.username)
+                etPass.setText(savedAuth.password)
+                etUser.visibility = View.VISIBLE
+                etPass.visibility = View.VISIBLE
+            }
+            if (savedAuth.customShare.isNotBlank()) {
+                etShare.setText(savedAuth.customShare)
+            }
+        } else {
+            rbAnonymous.isChecked = true
+        }
 
         radioGroup.setOnCheckedChangeListener { _, checkedId ->
             val isAuth = (checkedId == rbAuth.id)
@@ -897,6 +1104,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         layout.addView(etUser)
         layout.addView(etPass)
         layout.addView(etShare)
+        layout.addView(cbRemember)
 
         val scrollView = ScrollView(this).apply {
             addView(layout)
@@ -918,6 +1126,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     protocol = device.protocol,
                     customShare = customShare
                 )
+
+                if (cbRemember.isChecked) {
+                    lanCredentialStore.save(device.host, authConfig)
+                } else {
+                    lanCredentialStore.clear(device.host)
+                }
 
                 showHud("正在连接 ${device.name}...")
                 val startPath = if (customShare.isNotEmpty()) "/$customShare" else "/"

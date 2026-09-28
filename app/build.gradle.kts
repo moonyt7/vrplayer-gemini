@@ -43,8 +43,11 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
 
-    // Google ExoPlayer 硬件解码库
+    // Google ExoPlayer 硬件解码库（HLS / DASH 用于猫抓嗅探的 m3u8、mpd 直链）
     implementation("androidx.media3:media3-exoplayer:1.2.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.2.1")
+    implementation("androidx.media3:media3-exoplayer-dash:1.2.1")
+    implementation("androidx.media3:media3-exoplayer-rtsp:1.2.1")
     implementation("androidx.media3:media3-ui:1.2.1")
     implementation("androidx.media3:media3-common:1.2.1")
 
